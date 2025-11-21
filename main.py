@@ -16,6 +16,16 @@ from routers import auth, resumes, job_descriptions, matching, files, analytics,
 
 load_dotenv()
 
+
+def get_cors_settings():
+    """Return (origins, allow_credentials) derived from env configuration."""
+    raw_origins = os.getenv("CORS_ORIGINS", "")
+    cors_list = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
+    if cors_list:
+        return cors_list, True
+    return ["*"], False
+
+
 # Lifespan context manager for startup/shutdown events
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -40,15 +50,11 @@ app = FastAPI(
 )
 
 # CORS Configuration
-cors_origins = os.getenv(
-    "CORS_ORIGINS",
-    "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173"
-).split(",")
-
+cors_origins, allow_credentials = get_cors_settings()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
-    allow_credentials=True,
+    allow_credentials=allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
