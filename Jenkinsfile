@@ -20,7 +20,10 @@ pipeline {
         stage('SonarQube Analysis') {
             steps {
                 script {
-                    def scannerHome = tool 'sonar-scanner'
+                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                    echo "📊 Starting SonarQube Code Quality Analysis..."
+                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                    def scannerHome = tool 'SonarScanner'
                     withSonarQubeEnv('sonar-scanner') {
                         sh """
                             ${scannerHome}/bin/sonar-scanner \
@@ -28,19 +31,47 @@ pipeline {
                               -Dsonar.projectName='HR Backend API' \
                               -Dsonar.sources=. \
                               -Dsonar.python.coverage.reportPaths=coverage.xml \
-                              -Dsonar.exclusions=**/*.pyc,**/migrations/**
+                              -Dsonar.exclusions=**/*.pyc,**/migrations/**,**/__pycache__/**
                         """
                     }
+                    echo "✅ SonarQube analysis submitted successfully"
                 }
             }
         }
         
         stage('Quality Gate') {
             steps {
-                timeout(time: 5, unit: 'MINUTES') {
-                    waitForQualityGate abortPipeline: true
+                script {
+                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                    echo "⏳ Waiting for SonarQube Quality Gate result..."
+                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                    timeout(time: 10, unit: 'MINUTES') {
+                        def qg = waitForQualityGate()
+                        echo "📊 Quality Gate Status: ${qg.status}"
+                        if (qg.status != 'OK') {
+                            error "❌ Quality Gate failed with status: ${qg.status}"
+                        }
+                    }
+                    echo "✅ Quality Gate passed successfully"
                 }
-                echo "✅ Quality Gate passed"
+            }
+        }
+        
+        stage('Trivy File System Scan') {
+            steps {
+                script {
+                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                    echo "🔒 Running Trivy file system scan..."
+                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                    sh """
+                        trivy fs \
+                          --severity HIGH,CRITICAL \
+                          --exit-code 0 \
+                          --format table \
+                          .
+                    """
+                    echo "✅ Trivy file system scan completed"
+                }
             }
         }
         
@@ -57,10 +88,12 @@ pipeline {
             }
         }
         
-        stage('Security Scan - Trivy') {
+        stage('Trivy Image Scan') {
             steps {
                 script {
-                    echo "Running Trivy security scan..."
+                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                    echo "🔒 Running Trivy Docker image security scan..."
+                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                     sh """
                         trivy image \
                           --severity HIGH,CRITICAL \
@@ -68,7 +101,7 @@ pipeline {
                           --format table \
                           ${ACR_LOGIN_SERVER}/${IMAGE_NAME}:${IMAGE_TAG}
                     """
-                    echo "✅ Security scan completed"
+                    echo "✅ Trivy image scan completed"
                 }
             }
         }
