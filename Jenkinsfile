@@ -21,7 +21,7 @@ pipeline {
             steps {
                 script {
                     def scannerHome = tool 'sonar-scanner'
-                    withSonarQubeEnv('SonarQube') {
+                    withSonarQubeEnv('sonar-scanner') {
                         sh """
                             ${scannerHome}/bin/sonar-scanner \
                               -Dsonar.projectKey=hr-backend-api \
