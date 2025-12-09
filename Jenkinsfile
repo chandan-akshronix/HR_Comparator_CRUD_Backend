@@ -89,7 +89,7 @@ pipeline {
             }
         }
         
-        stage('Deploy to AKS') {
+        /*stage('Deploy to AKS') {
             steps {
                 script {
                     withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
@@ -140,4 +140,4 @@ pipeline {
             """
         }
     }
-}
+}*/
