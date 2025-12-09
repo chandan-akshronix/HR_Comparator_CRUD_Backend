@@ -89,7 +89,8 @@ pipeline {
             }
         }
         
-        /*stage('Deploy to AKS') {
+        /* COMMENTED OUT - Deploy to AKS stage
+        stage('Deploy to AKS') {
             steps {
                 script {
                     withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
@@ -112,6 +113,7 @@ pipeline {
                 }
             }
         }
+        */ // End of commented Deploy to AKS stage
     }
     
     post {
@@ -126,7 +128,8 @@ pipeline {
             ========================================
             Image: ${ACR_LOGIN_SERVER}/${IMAGE_NAME}:${IMAGE_TAG}
             Registry: Azure Container Registry
-            Deployed to: hr-app namespace
+            Status: Images pushed to ACR successfully
+            Note: Deploy to AKS stage is commented out
             ========================================
             """
         }
@@ -140,4 +143,4 @@ pipeline {
             """
         }
     }
-}*/
+}
