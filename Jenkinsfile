@@ -23,7 +23,7 @@ pipeline {
                     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                     echo "📊 Starting SonarQube Code Quality Analysis..."
                     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                    def scannerHome = tool 'SonarScanner'
+                    def scannerHome = tool 'sonar-scanner'
                     withSonarQubeEnv('sonar-scanner') {
                         sh """
                             ${scannerHome}/bin/sonar-scanner \
