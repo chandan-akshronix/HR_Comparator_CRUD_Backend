@@ -1,185 +1,108 @@
-pipeline {
-    agent any
-    
-    environment {
-        ACR_NAME = 'hracrregistry'
-        ACR_LOGIN_SERVER = 'hracrregistry.azurecr.io'
-        IMAGE_NAME = 'backend-api'
-        IMAGE_TAG = "${env.BUILD_NUMBER}"
-    }
-    
-    stages {
-        stage('Checkout') {
-            steps {
-                checkout scm
-                echo "✅ Code checked out successfully"
-            }
-        }
-        
-        stage('SonarQube Analysis') {
-            steps {
-                script {
-                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                    echo "📊 Starting SonarQube Code Quality Analysis..."
-                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                    def scannerHome = tool 'sonar-scanner'
-                    withSonarQubeEnv('sonar-scanner') {
-                        sh """
-                            ${scannerHome}/bin/sonar-scanner \
-                              -Dsonar.projectKey=hr-backend-api \
-                              -Dsonar.projectName='HR Backend API' \
-                              -Dsonar.sources=. \
-                              -Dsonar.python.coverage.reportPaths=coverage.xml \
-                              -Dsonar.exclusions=**/*.pyc,**/migrations/**,**/__pycache__/**
-                        """
-                    }
-                    echo "✅ SonarQube analysis submitted successfully"
-                }
-            }
-        }
-        
-        stage('Quality Gate') {
-            steps {
-                script {
-                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                    echo "⏳ Waiting for SonarQube Quality Gate result..."
-                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                    timeout(time: 10, unit: 'MINUTES') {
-                        def qg = waitForQualityGate()
-                        echo "📊 Quality Gate Status: ${qg.status}"
-                        if (qg.status != 'OK') {
-                            error "❌ Quality Gate failed with status: ${qg.status}"
-                        }
-                    }
-                    echo "✅ Quality Gate passed successfully"
-                }
-            }
-        }
-        
-        stage('Trivy File System Scan') {
-            steps {
-                script {
-                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                    echo "🔒 Running Trivy file system scan..."
-                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                    sh """
-                        trivy fs \
-                          --severity HIGH,CRITICAL \
-                          --exit-code 0 \
-                          --format table \
-                          .
-                    """
-                    echo "✅ Trivy file system scan completed"
-                }
-            }
-        }
-        
-        stage('Build Docker Image') {
-            steps {
-                script {
-                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                    echo "🐳 Building Docker images for ACR..."
-                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                    sh """
-                        docker build -t ${ACR_LOGIN_SERVER}/${IMAGE_NAME}:${IMAGE_TAG} .
-                        docker tag ${ACR_LOGIN_SERVER}/${IMAGE_NAME}:${IMAGE_TAG} ${ACR_LOGIN_SERVER}/${IMAGE_NAME}:latest
-                    """
-                    echo "✅ Docker images built successfully"
-                }
-            }
-        }
-        
-        stage('Trivy Image Scan') {
-            steps {
-                script {
-                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                    echo "🔒 Running Trivy Docker image security scan..."
-                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                    sh """
-                        trivy image \
-                          --severity HIGH,CRITICAL \
-                          --exit-code 0 \
-                          --format table \
-                          ${ACR_LOGIN_SERVER}/${IMAGE_NAME}:${IMAGE_TAG}
-                    """
-                    echo "✅ Trivy image scan completed"
-                }
-            }
-        }
-        
-        stage('Push to Azure Container Registry') {
-            steps {
-                script {
-                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                    echo "☁️ Pushing Docker image to ACR..."
-                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                    withCredentials([usernamePassword(credentialsId: 'acr-credentials', usernameVariable: 'ACR_USERNAME', passwordVariable: 'ACR_PASSWORD')]) {
-                        sh """
-                            echo \$ACR_PASSWORD | docker login ${ACR_LOGIN_SERVER} -u \$ACR_USERNAME --password-stdin
-                            docker push ${ACR_LOGIN_SERVER}/${IMAGE_NAME}:${IMAGE_TAG}
-                            docker push ${ACR_LOGIN_SERVER}/${IMAGE_NAME}:latest
-                            docker logout ${ACR_LOGIN_SERVER}
-                        """
-                    }
-                    echo "✅ Images pushed to Azure Container Registry"
-                }
-            }
-        }
-        
-        stage('Deploy to AKS') {
-            steps {
-                script {
-                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                    echo "🚀 Deploying to AKS cluster..."
-                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                    withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-                        sh """
-                            export KUBECONFIG=\$KUBECONFIG
-                            
-                            # Update image tag in manifest
-                            sed -i 's|image: ${ACR_LOGIN_SERVER}/${IMAGE_NAME}:.*|image: ${ACR_LOGIN_SERVER}/${IMAGE_NAME}:${IMAGE_TAG}|g' ../k8s/04-backend.yaml
-                            
-                            # Apply the manifest (creates or updates deployment)
-                            kubectl apply -f ../k8s/04-backend.yaml
-                            
-                            # Wait for rollout to complete
-                            kubectl rollout status deployment/backend-api -n hr-app --timeout=5m
-                            
-                            # Verify deployment
-                            echo "📋 Deployment Status:"
-                            kubectl get pods -n hr-app -l app=backend-api
-                        """
-                    }
-                    echo "✅ Deployment to AKS successful"
-                }
-            }
-        }
-    }
-    
-    post {
-        always {
-            cleanWs()
-            sh "docker system prune -f || true"
-        }
-        success {
-            echo """
-            ========================================
-            ✅ Backend API Pipeline Successful!
-            ========================================
-            Image: ${ACR_LOGIN_SERVER}/${IMAGE_NAME}:${IMAGE_TAG}
-            Registry: Azure Container Registry
-            Deployed to: hr-app namespace
-            ========================================
-            """
-        }
-        failure {
-            echo """
-            ========================================
-            ❌ Backend API Pipeline Failed!
-            ========================================
-            Check the logs above for details
-            ========================================
-            """
-        }
-    }
-}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-api
+  namespace: hr-app
+  labels:
+    app: backend-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: backend-api
+  template:
+    metadata:
+      labels:
+        app: backend-api
+    spec:
+      containers:
+      - name: backend-api
+        image: hracrregistry.azurecr.io/backend-api:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+        env:
+        - name: MONGODB_URL
+          valueFrom:
+            secretKeyRef:
+              name: hr-secrets
+              key: MONGODB_URL
+        - name: JWT_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: hr-secrets
+              key: JWT_SECRET_KEY
+        - name: DATABASE_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: hr-config
+              key: DATABASE_NAME
+        - name: JWT_ALGORITHM
+          valueFrom:
+            configMapKeyRef:
+              name: hr-config
+              key: JWT_ALGORITHM
+        - name: JWT_ACCESS_TOKEN_EXPIRE_MINUTES
+          valueFrom:
+            configMapKeyRef:
+              name: hr-config
+              key: JWT_ACCESS_TOKEN_EXPIRE_MINUTES
+        - name: CORS_ORIGINS
+          valueFrom:
+            configMapKeyRef:
+              name: hr-config
+              key: CORS_ORIGINS
+        - name: AI_AGENT_URL
+          valueFrom:
+            configMapKeyRef:
+              name: hr-config
+              key: AI_AGENT_URL
+        - name: AI_AGENT_TIMEOUT
+          valueFrom:
+            configMapKeyRef:
+              name: hr-config
+              key: AI_AGENT_TIMEOUT
+        - name: AI_AGENT_ENABLED
+          valueFrom:
+            configMapKeyRef:
+              name: hr-config
+              key: AI_AGENT_ENABLED
+        - name: ENVIRONMENT
+          valueFrom:
+            configMapKeyRef:
+              name: hr-config
+              key: ENVIRONMENT
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "200m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          timeoutSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-api-service
+  namespace: hr-app
+spec:
+  selector:
+    app: backend-api
+  ports:
+    - protocol: TCP
+      port: 8000
+      targetPort: 8000
