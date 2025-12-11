@@ -2,11 +2,10 @@ pipeline {
     agent any
     
     environment {
-        ACR_NAME = 'hracrregistry' // Will be output from Terraform
+        ACR_NAME = 'hracrregistry'
         ACR_LOGIN_SERVER = 'hracrregistry.azurecr.io'
         IMAGE_NAME = 'backend-api'
         IMAGE_TAG = "${env.BUILD_NUMBER}"
-        SONARQUBE_SERVER = 'http://4.213.4.181:9000' // Jenkins configured server name
     }
     
     stages {
@@ -78,7 +77,9 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    echo "Building Docker images for ACR..."
+                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                    echo "🐳 Building Docker images for ACR..."
+                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                     sh """
                         docker build -t ${ACR_LOGIN_SERVER}/${IMAGE_NAME}:${IMAGE_TAG} .
                         docker tag ${ACR_LOGIN_SERVER}/${IMAGE_NAME}:${IMAGE_TAG} ${ACR_LOGIN_SERVER}/${IMAGE_NAME}:latest
@@ -109,6 +110,9 @@ pipeline {
         stage('Push to Azure Container Registry') {
             steps {
                 script {
+                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                    echo "☁️ Pushing Docker image to ACR..."
+                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                     withCredentials([usernamePassword(credentialsId: 'acr-credentials', usernameVariable: 'ACR_USERNAME', passwordVariable: 'ACR_PASSWORD')]) {
                         sh """
                             echo \$ACR_PASSWORD | docker login ${ACR_LOGIN_SERVER} -u \$ACR_USERNAME --password-stdin
@@ -116,37 +120,40 @@ pipeline {
                             docker push ${ACR_LOGIN_SERVER}/${IMAGE_NAME}:latest
                             docker logout ${ACR_LOGIN_SERVER}
                         """
-                        echo "✅ Images pushed to Azure Container Registry"
                     }
+                    echo "✅ Images pushed to Azure Container Registry"
                 }
             }
         }
         
-        /* COMMENTED OUT - Deploy to AKS stage
         stage('Deploy to AKS') {
             steps {
                 script {
+                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                    echo "🚀 Deploying to AKS cluster..."
+                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                     withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
                         sh """
                             export KUBECONFIG=\$KUBECONFIG
                             
-                            # Update deployment with new image from ACR
-                            kubectl set image deployment/backend-api \
-                              backend-api=${ACR_LOGIN_SERVER}/${IMAGE_NAME}:${IMAGE_TAG} \
-                              -n hr-app
+                            # Update image tag in manifest
+                            sed -i 's|image: ${ACR_LOGIN_SERVER}/${IMAGE_NAME}:.*|image: ${ACR_LOGIN_SERVER}/${IMAGE_NAME}:${IMAGE_TAG}|g' ../k8s/04-backend.yaml
+                            
+                            # Apply the manifest (creates or updates deployment)
+                            kubectl apply -f ../k8s/04-backend.yaml
                             
                             # Wait for rollout to complete
                             kubectl rollout status deployment/backend-api -n hr-app --timeout=5m
                             
                             # Verify deployment
+                            echo "📋 Deployment Status:"
                             kubectl get pods -n hr-app -l app=backend-api
                         """
-                        echo "✅ Deployment successful"
                     }
+                    echo "✅ Deployment to AKS successful"
                 }
             }
         }
-        */ // End of commented Deploy to AKS stage
     }
     
     post {
@@ -161,8 +168,7 @@ pipeline {
             ========================================
             Image: ${ACR_LOGIN_SERVER}/${IMAGE_NAME}:${IMAGE_TAG}
             Registry: Azure Container Registry
-            Status: Images pushed to ACR successfully
-            Note: Deploy to AKS stage is commented out
+            Deployed to: hr-app namespace
             ========================================
             """
         }
