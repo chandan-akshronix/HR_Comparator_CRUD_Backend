@@ -145,7 +145,7 @@ pipeline {
                             sed -i 's|image: ${ACR_LOGIN_SERVER}/${IMAGE_NAME}:.*|image: ${ACR_LOGIN_SERVER}/${IMAGE_NAME}:${IMAGE_TAG}|g' ../k8s/04-backend.yaml
                             
                             # Apply the manifest (creates or updates deployment)
-                            kubectl apply -f ../k8s/04-backend.yaml
+                            kubectl apply -f ./k8s/04-backend.yaml
                             
                             # Wait for rollout to complete
                             kubectl rollout status deployment/backend-api -n hr-app --timeout=5m
