@@ -48,6 +48,26 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+# ============================================
+# Prometheus Metrics Instrumentation
+# ============================================
+from prometheus_fastapi_instrumentator import Instrumentator
+
+# Initialize Prometheus instrumentator
+# This automatically tracks:
+# - http_requests_total (total requests by method, path, status)
+# - http_request_duration_seconds (request latency histogram)
+# - http_requests_in_progress (currently processing requests)
+instrumentator = Instrumentator(
+    should_group_status_codes=False,      # Keep individual status codes (200, 201, 404, 500)
+    should_ignore_untemplated=True,       # Ignore paths without URL templates
+    should_respect_env_var=True,          # Can disable via ENABLE_METRICS=false
+    excluded_handlers=["/health", "/metrics"],  # Don't track these endpoints
+)
+
+# Instrument the app and expose /metrics endpoint
+instrumentator.instrument(app).expose(app, endpoint="/metrics")
+# ============================================
 
 # CORS Configuration
 cors_origins, allow_credentials = get_cors_settings()
