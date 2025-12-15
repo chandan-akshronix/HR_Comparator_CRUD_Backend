@@ -102,6 +102,8 @@ kind: Service
 metadata:
   name: backend-api-service
   namespace: hr-app
+  labels:
+    app: backend-api
 spec:
   selector:
     app: backend-api
