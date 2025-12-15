@@ -1,3 +1,5 @@
+# Application level custom metrices
+prometheus-fastapi-instrumentator==6.1.0
 # FastAPI and Web Server
 fastapi>=0.104.1
 uvicorn[standard]>=0.24.0
